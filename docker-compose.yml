@@ -1,0 +1,30 @@
+---
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities:
+                - gpu
+              count: all
+              driver: nvidia
+    image: ollama/ollama
+    ports:
+      - 11434:11434
+    volumes:
+      - ollama:/root/.ollama
+  open-webui:
+    depends_on:
+      - ollama
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      # OLLAMA_WEB_HOOKS_ENABLED: true
+    image: ghcr.io/open-webui/open-webui:main
+    ports:
+      - 3000:8080
+    volumes:
+      - open-webui:/app/backend/data
+volumes:
+  ollama:
+  open-webui:
