@@ -27,4 +27,14 @@ services:
       - open-webui:/app/backend/data
 volumes:
   ollama:
+    driver: local
+    driver_opts:
+      device: F:/opt/docker/ollama
+      o: bind
+      type: none
   open-webui:
+    driver: local
+    driver_opts:
+      device: F:/opt/docker/open-webui
+      o: bind
+      type: none
