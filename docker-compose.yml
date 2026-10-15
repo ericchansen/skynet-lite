@@ -9,32 +9,48 @@ services:
                 - gpu
               count: all
               driver: nvidia
-    image: ollama/ollama
-    ports:
-      - 11434:11434
+    image: ollama/ollama:0.40.1
+    restart: unless-stopped
+    environment:
+      OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-81920}
+      OLLAMA_KEEP_ALIVE: 30m
+      OLLAMA_LOAD_TIMEOUT: 10m
+      OLLAMA_LLM_LIBRARY: cuda_v12
+      OLLAMA_MAX_LOADED_MODELS: 1
+      OLLAMA_NUM_PARALLEL: 1
     volumes:
       - ollama:/root/.ollama
+      - ./Modelfile.qwen38:/tmp/Modelfile.qwen38:ro
+  ollama-compat:
+    build: ./compat
+    depends_on:
+      - ollama
+    environment:
+      OLLAMA_UPSTREAM: http://ollama:11434
+    restart: unless-stopped
+    ports:
+      - 127.0.0.1:11434:11434
   open-webui:
+    restart: unless-stopped
     depends_on:
       - ollama
     environment:
       OLLAMA_BASE_URL: http://ollama:11434
-      # OLLAMA_WEB_HOOKS_ENABLED: true
-    image: ghcr.io/open-webui/open-webui:main
+    image: ghcr.io/open-webui/open-webui:v0.11.4
     ports:
-      - 3000:8080
+      - 127.0.0.1:3000:8080
     volumes:
       - open-webui:/app/backend/data
 volumes:
   ollama:
     driver: local
     driver_opts:
-      device: F:/opt/docker/ollama
+      device: ${OLLAMA_DATA_DIR:-F:/opt/docker/ollama}
       o: bind
       type: none
   open-webui:
     driver: local
     driver_opts:
-      device: F:/opt/docker/open-webui
+      device: ${WEBUI_DATA_DIR:-F:/opt/docker/open-webui}
       o: bind
       type: none
