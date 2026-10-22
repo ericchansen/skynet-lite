@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -47,9 +48,13 @@ func normalize(body []byte) ([]byte, int, error) {
 	var model string
 	_ = json.Unmarshal(request["model"], &model)
 	if isQwen(model) {
-		// Copilot may request unsupported "high", including during compaction.
-		if effort := request["reasoning_effort"]; string(effort) != `"medium"` {
-			request["reasoning_effort"] = json.RawMessage(`"medium"`)
+		// Preserve explicit thinking controls; normalize unsupported "high" to medium.
+		effort := json.RawMessage(`"medium"`)
+		if requested := string(request["reasoning_effort"]); requested == `"low"` || requested == `"none"` {
+			effort = request["reasoning_effort"]
+		}
+		if string(request["reasoning_effort"]) != string(effort) {
+			request["reasoning_effort"] = effort
 			repairs++
 		}
 		if raw, ok := request["reasoning"]; ok {
@@ -58,7 +63,7 @@ func normalize(body []byte) ([]byte, int, error) {
 				return nil, 0, fmt.Errorf("invalid reasoning: %w", err)
 			}
 			if reasoning != nil {
-				reasoning["effort"] = json.RawMessage(`"medium"`)
+				reasoning["effort"] = effort
 				encoded, err := json.Marshal(reasoning)
 				if err != nil {
 					return nil, 0, err
@@ -131,12 +136,26 @@ func handler(upstream *url.URL) http.Handler {
 }
 
 func main() {
-	upstream, err := url.Parse(os.Getenv("OLLAMA_UPSTREAM"))
+	listen := flag.String("listen", ":11434", "HTTP listen address")
+	upstreamAddress := flag.String("upstream", os.Getenv("OLLAMA_UPSTREAM"), "Ollama HTTP URL")
+	logFile := flag.String("log-file", "", "Append logs to this file instead of stderr")
+	flag.Parse()
+
+	if *logFile != "" {
+		file, err := os.OpenFile(*logFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer file.Close()
+		log.SetOutput(file)
+	}
+
+	upstream, err := url.Parse(*upstreamAddress)
 	if err != nil || upstream == nil || upstream.Scheme != "http" || upstream.Host == "" {
-		log.Fatal("OLLAMA_UPSTREAM must be an http URL")
+		log.Fatal("-upstream or OLLAMA_UPSTREAM must be an http URL")
 	}
 	server := &http.Server{
-		Addr:              ":11434",
+		Addr:              *listen,
 		Handler:           handler(upstream),
 		ReadHeaderTimeout: 10 * time.Second,
 	}

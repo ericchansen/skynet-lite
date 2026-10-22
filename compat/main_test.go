@@ -100,6 +100,29 @@ func TestOtherModelAndInvalidInput(t *testing.T) {
 	}
 }
 
+func TestNoThinkingForCompaction(t *testing.T) {
+	body, _, err := normalize([]byte(`{
+		"model":"qwen38:latest","reasoning_effort":"none","reasoning":{"effort":"none"},
+		"max_tokens":8192,"messages":[{"role":"user","content":"Summarize this conversation."}]
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var request struct {
+		Effort    string `json:"reasoning_effort"`
+		MaxTokens int    `json:"max_tokens"`
+		Reasoning struct {
+			Effort string `json:"effort"`
+		} `json:"reasoning"`
+	}
+	if err := json.Unmarshal(body, &request); err != nil {
+		t.Fatal(err)
+	}
+	if request.Effort != "none" || request.Reasoning.Effort != "none" || request.MaxTokens != qwenOutput {
+		t.Fatalf("compaction effort or output budget changed: %s", body)
+	}
+}
+
 func TestProxyPreservesStreamAndErrors(t *testing.T) {
 	stream := "data: {\"choices\":[{\"delta\":{\"content\":\"OK\"},\"finish_reason\":null}]}\n\n" +
 		"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"
@@ -153,5 +176,33 @@ func TestProxyPreservesStreamAndErrors(t *testing.T) {
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		t.Fatal("model discovery failed")
+	}
+}
+
+func TestNativeChatPassThrough(t *testing.T) {
+	body := `{"model":"qwen38","think":"low","options":{"num_ctx":81920,"num_predict":256}}`
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		actual, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Error(err)
+		}
+		if r.Method != http.MethodPost || r.URL.Path != "/api/chat" || string(actual) != body {
+			t.Errorf("native request changed: %s %s %s", r.Method, r.URL.Path, actual)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"done":true}`)
+	}))
+	defer upstream.Close()
+	target, _ := url.Parse(upstream.URL)
+	server := httptest.NewServer(handler(target))
+	defer server.Close()
+	response, err := http.Post(server.URL+"/api/chat", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	actual, err := io.ReadAll(response.Body)
+	if err != nil || response.StatusCode != http.StatusOK || string(actual) != `{"done":true}` {
+		t.Fatalf("native response changed: %d %s %v", response.StatusCode, actual, err)
 	}
 }
