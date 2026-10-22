@@ -1,4 +1,4 @@
-"""Live checks against the Compose compatibility endpoint; no downloads or tool execution."""
+"""Live checks against the local compatibility endpoint; no downloads or tool execution."""
 
 import json
 import argparse

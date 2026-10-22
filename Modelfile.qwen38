@@ -46,5 +46,6 @@ When calling a function, reply with its name and arguments in a JSON object with
 {{ end }}<|im_start|>assistant
 {{ end }}{{ .Response }}{{ if .Response }}<|im_end|>{{ end }}"""
 
+PARAMETER num_predict 8192
 PARAMETER stop "<|im_start|>"
 PARAMETER stop "<|im_end|>"
